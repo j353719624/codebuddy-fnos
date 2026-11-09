@@ -34,6 +34,13 @@ else
     rm -f /tmp/cbc.tgz
 fi
 
+# manifest 版本号跟随实际拉到的 npm 包版本
+ACTUAL=$(grep -m1 '"version"' "${LIB}/package.json" | cut -d'"' -f4)
+if [ -n "${ACTUAL}" ]; then
+    sed -i "s/^version = .*/version = ${ACTUAL}/" manifest
+    echo "manifest 版本号同步为 ${ACTUAL}"
+fi
+
 chmod 755 app/bin/codebuddy cmd/*
 chmod 755 "${LIB}/bin/codebuddy" 2>/dev/null || true
 
