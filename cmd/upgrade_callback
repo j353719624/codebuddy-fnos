@@ -1,0 +1,5 @@
+#!/bin/bash
+set -u
+APPDEST="${TRIM_APPDEST:-}"
+[ -x "${APPDEST}/cmd/main" ] && "${APPDEST}/cmd/main" start >> /dev/null 2>&1 || true
+exit 0

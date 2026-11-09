@@ -1,0 +1,14 @@
+{
+  ".url": {
+    "codebuddy.Application": {
+      "title": "CodeBuddy",
+      "desc": "CodeBuddy Code Agent 控制台",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "http",
+      "port": "7890",
+      "url": "/",
+      "allUsers": false
+    }
+  }
+}

@@ -1,0 +1,7 @@
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+NODE=""
+for c in /vol2/@appcenter/nodejs_v22/bin/node /usr/bin/node; do
+  if [ -x "$c" ]; then NODE="$c"; break; fi
+done
+exec "$NODE" "$DIR/../lib/codebuddy/bin/codebuddy" "$@"

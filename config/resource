@@ -1,0 +1,15 @@
+{
+    "api-scope": [],
+    "data-share": {
+        "shares": [
+            {
+                "name": "codebuddy",
+                "permission": {
+                    "rw": [
+                        "codebuddy"
+                    ]
+                }
+            }
+        ]
+    }
+}

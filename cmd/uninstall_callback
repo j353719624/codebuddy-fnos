@@ -1,0 +1,8 @@
+#!/bin/bash
+set -u
+PKGVAR="${TRIM_PKGVAR:-/vol2/@appdata/workbuddy}"
+pkill -f "codebuddy" 2>/dev/null || true
+if [ "${wizard_delete_data:-false}" = "true" ]; then
+    rm -rf "${PKGVAR}" 2>/dev/null || true
+fi
+exit 0

@@ -1,0 +1,20 @@
+#!/bin/bash
+# 安装后：写入免密 + 禁内置自更新的默认配置；准备数据工作区
+set -u
+PKGVAR="${TRIM_PKGVAR:-/vol2/@appdata/codebuddy}"
+CONF="${PKGVAR}/config/settings.json"
+mkdir -p "${PKGVAR}/config" 2>/dev/null || true
+if [ ! -f "${CONF}" ]; then
+    printf '%s\n' '{' '  "gateway": { "auth": "none" },' '  "autoUpdates": false' '}' > "${CONF}"
+    chmod 600 "${CONF}" 2>/dev/null || true
+fi
+# 数据工作目录（fnOS data-share：/vol2/@appshare/codebuddy）
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    WS="${TRIM_DATA_SHARE_PATHS%%:*}"
+    case "${WS}" in /*) ;; *) WS="/${WS}";; esac
+else
+    WS="/vol2/@appshare/codebuddy"
+fi
+mkdir -p "${WS}/workspace" 2>/dev/null || true
+printf '%s\n' "CodeBuddy 安装完成，桌面点「CodeBuddy」进入，无需密码。Agent 工作目录：${WS}/workspace" >&2
+exit 0

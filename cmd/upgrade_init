@@ -1,0 +1,4 @@
+#!/bin/bash
+APPDEST="${TRIM_APPDEST:-}"
+[ -x "${APPDEST}/cmd/main" ] && "${APPDEST}/cmd/main" stop || true
+exit 0

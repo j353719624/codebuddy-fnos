@@ -1,0 +1,133 @@
+#!/bin/bash
+# CodeBuddy Code daemon 常驻服务（Octop 式三层目录：程序 / 状态 / 数据工作区）
+set -u
+APPDEST="${TRIM_APPDEST:-/var/apps/codebuddy}"
+LOG_DIR="${TRIM_PKGVAR:-/vol2/@appdata/codebuddy}"
+BIN_DIR="${APPDEST}/bin"
+LIB_DIR="${APPDEST}/lib/codebuddy"
+CB="${BIN_DIR}/codebuddy"
+PORT="${WB_PORT:-7890}"
+
+# 数据工作目录：fnOS data-share 注入优先，回落 @appshare，再回落包内
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+    DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+    case "${DATA_DIR}" in /*) ;; *) DATA_DIR="/${DATA_DIR}";; esac
+elif [ -d /vol2/@appshare/codebuddy ] || mkdir -p /vol2/@appshare/codebuddy 2>/dev/null; then
+    DATA_DIR="/vol2/@appshare/codebuddy"
+else
+    DATA_DIR="${APPDEST}/shares/codebuddy/data"
+fi
+WORKSPACE_DIR="${DATA_DIR}/workspace"
+export CODEBUDDY_CONFIG_DIR="${LOG_DIR}/config"
+export HOME="${LOG_DIR}/home"
+export DISABLE_AUTOUPDATER=1
+mkdir -p "${CODEBUDDY_CONFIG_DIR}" "${HOME}" "${WORKSPACE_DIR}" 2>/dev/null || true
+
+log_msg() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_DIR}/info.log"; }
+PID_FILE="${LOG_DIR}/daemon.pid"
+WATCH_PID="${LOG_DIR}/watchdog.pid"
+check_process() { [ -n "$1" ] && ps -p "$1" > /dev/null 2>&1; }
+port_ready() { nc -z 127.0.0.1 "${PORT}" 2>/dev/null && return 0; (exec 3<>/dev/tcp/127.0.0.1/"${PORT}") 2>/dev/null && return 0; return 1; }
+daemon_running() {
+    pid=""
+    [ -r "${PID_FILE}" ] && pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+    check_process "${pid}" && return 0
+    port_ready && pgrep -f "CodeBuddy Serve" > /dev/null 2>&1
+}
+find_node() {
+    for c in /vol2/@appcenter/nodejs_v22/bin/node /vol2/@appcenter/nodejs_v24/bin/node /usr/bin/node; do
+        [ -x "$c" ] && { echo "$c"; return; }
+    done
+    command -v node
+}
+start_daemon() {
+    daemon_running && return 0
+    log_msg "启动 codebuddy daemon port=${PORT} workspace=${WORKSPACE_DIR}"
+    ( cd "${WORKSPACE_DIR}" 2>/dev/null || cd "${LOG_DIR}" && setsid "${CB}" daemon start --host 0.0.0.0 --port "${PORT}" >> "${LOG_DIR}/daemon.log" 2>&1 < /dev/null )
+    for i in $(seq 1 60); do
+        if port_ready; then
+            pgrep -f "CodeBuddy Serve" | head -n 1 > "${PID_FILE}" 2>/dev/null || true
+            log_msg "daemon 就绪 pid=$(cat "${PID_FILE}" 2>/dev/null)"
+            return 0
+        fi
+        sleep 1
+    done
+    log_msg "警告：60 秒内端口 ${PORT} 未就绪"
+    return 1
+}
+stop_daemon() {
+    log_msg "停止 daemon"
+    "${CB}" daemon stop >> "${LOG_DIR}/daemon.log" 2>&1
+    pkill -f "CodeBuddy Serve" 2>/dev/null
+    pkill -f "lib/codebuddy/bin/codebuddy" 2>/dev/null
+    sleep 2
+    pkill -9 -f "CodeBuddy Serve" 2>/dev/null
+    pkill -9 -f "lib/codebuddy/bin/codebuddy" 2>/dev/null
+    rm -f "${PID_FILE}"
+}
+start_watchdog() {
+    wpid=""
+    [ -r "${WATCH_PID}" ] && wpid=$(head -n 1 "${WATCH_PID}" | tr -d '[:space:]')
+    check_process "${wpid}" && return 0
+    setsid bash "$0" watchdog >> "${LOG_DIR}/watchdog.log" 2>&1 < /dev/null &
+    printf "%s" "$!" > "${WATCH_PID}"
+}
+stop_watchdog() {
+    wpid=""
+    [ -r "${WATCH_PID}" ] && wpid=$(head -n 1 "${WATCH_PID}" | tr -d '[:space:]')
+    if check_process "${wpid}"; then kill -TERM "${wpid}" 2>/dev/null; sleep 1; fi
+    rm -f "${WATCH_PID}"
+}
+do_update() {
+    NODE="$(find_node)"
+    [ -n "${NODE}" ] || { echo "未找到 node"; exit 1; }
+    local_ver=$("${CB}" --version 2>/dev/null | head -n 1)
+    log_msg "应用内更新开始（当前 ${local_ver}）"
+    echo "当前版本：${local_ver}"
+    TMP="${LOG_DIR}/update-tmp"
+    rm -rf "${TMP}"; mkdir -p "${TMP}"
+    NEW_VER=""
+    for URL in "https://registry.npmmirror.com/@tencent-ai/codebuddy-code/latest" "https://registry.npmjs.org/@tencent-ai/codebuddy-code/latest"; do
+        NEW_VER=$(curl -sSf --max-time 30 "${URL}" 2>/dev/null | "${NODE}" -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{console.log(JSON.parse(d).version)}catch(e){}})")
+        [ -n "${NEW_VER}" ] && break
+    done
+    [ -n "${NEW_VER}" ] || { echo "获取最新版本号失败（网络）"; exit 1; }
+    echo "目标版本：${NEW_VER}"
+    [ "${NEW_VER}" = "${local_ver}" ] && { echo "已是最新版本"; exit 0; }
+    OK=0
+    for REG in "https://registry.npmmirror.com" "https://registry.npmjs.org"; do
+        log_msg "更新：从 ${REG} 拉取 ${NEW_VER}"
+        if npm install --prefix "${TMP}" --registry "${REG}" "@tencent-ai/codebuddy-code@${NEW_VER}" >> "${LOG_DIR}/update.log" 2>&1; then OK=1; break; fi
+    done
+    [ "${OK}" = "1" ] || { echo "所有镜像均失败，详见 update.log"; exit 1; }
+    NEW_BIN="${TMP}/node_modules/@tencent-ai/codebuddy-code"
+    "${NODE}" "${NEW_BIN}/bin/codebuddy" --version >/dev/null 2>&1 || { echo "新包校验失败"; exit 1; }
+    stop_daemon
+    rm -rf "${LIB_DIR}.old"; mv "${LIB_DIR}" "${LIB_DIR}.old" 2>/dev/null
+    mkdir -p "${LIB_DIR}"
+    cp -a "${NEW_BIN}/." "${LIB_DIR}/"
+    if "${CB}" --version >/dev/null 2>&1; then
+        rm -rf "${LIB_DIR}.old"
+        start_daemon
+        log_msg "应用内更新完成：${local_ver} -> ${NEW_VER}"
+        echo "更新完成：${local_ver} -> ${NEW_VER}"
+    else
+        rm -rf "${LIB_DIR}"; mv "${LIB_DIR}.old" "${LIB_DIR}"
+        start_daemon
+        echo "新包异常，已回滚并重启旧版"
+        exit 1
+    fi
+}
+case $1 in
+start)   start_daemon; start_watchdog ;;
+watchdog)
+    while true; do
+        sleep 15
+        daemon_running || { log_msg "watchdog: 重新拉起"; start_daemon; }
+    done
+    ;;
+stop)    stop_watchdog; stop_daemon ;;
+status)  daemon_running && exit 0 || exit 3 ;;
+update)  do_update ;;
+*) exit 1 ;;
+esac
