@@ -3,6 +3,12 @@
 set -u
 APPDEST="${TRIM_APPDEST:-/var/apps/codebuddy}"
 LOG_DIR="${TRIM_PKGVAR:-/vol2/@appdata/codebuddy}"
+# fnOS 1.2 布局：实体在 target/（软链到 /vol2/@appcenter/<app>），根下 bin/lib 不可用
+if [ -d "${APPDEST}/target" ]; then
+    APPDEST="${APPDEST}/target"
+elif [ -d /vol2/@appcenter/codebuddy ]; then
+    APPDEST=/vol2/@appcenter/codebuddy
+fi
 BIN_DIR="${APPDEST}/bin"
 LIB_DIR="${APPDEST}/lib/codebuddy"
 CB="${BIN_DIR}/codebuddy"
