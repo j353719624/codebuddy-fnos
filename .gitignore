@@ -1,3 +1,4 @@
-app/lib/
+build_stage/
+*.tar.gz
 *.fpk
-__pycache__/
+node_modules/

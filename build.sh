@@ -1,49 +1,37 @@
-#!/bin/bash
-# 构建 fnOS FPK 安装包。产出：codebuddy.fpk
-#
-# 前置：在 fnOS 本机运行（fnpack 已内置：/usr/local/bin/fnpack）。
-# 做两件事：
-#   1) 拉取 CodeBuddy Code npm 包填充托管代码目录 app/lib/codebuddy
-#      （多镜像容错：npmmirror -> npmjs）
-#   2) fnpack build 打包
-#
-# 环境变量：
-#   CBC_VERSION   指定版本（默认 latest）
-set -e
-cd "$(dirname "$0")"
+#!/usr/bin/env bash
+# CodeBuddy fnOS FPK 一键构建脚本
+# 自动拉取 @tencent-ai/codebuddy-code 最新版并打包为 fnOS 应用
+set -euo pipefail
 
-VERSION="${CBC_VERSION:-latest}"
-REGISTRY="${CBC_REGISTRY:-https://registry.npmmirror.com}"
-LIB=app/lib/codebuddy
+REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
+OUT_DIR="${OUT_DIR:-.}"
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
-if [ -f "${LIB}/package.json" ]; then
-    echo "app/lib/codebuddy 已存在，跳过拉取（删除该目录可强制重新拉取）"
-else
-    mkdir -p "${LIB}"
-    if [ "${VERSION}" = "latest" ]; then
-        VER=$(curl -sSf --retry 3 "${REGISTRY}/@tencent-ai/codebuddy-code/latest" | grep -oE '"version":"[^"]+"' | head -1 | cut -d'"' -f4)
-    else
-        VER="${VERSION}"
-    fi
-    [ -n "${VER}" ] || { echo "获取版本号失败" >&2; exit 1; }
-    echo "拉取 @tencent-ai/codebuddy-code@${VER} ..."
-    curl -sSfL --retry 3 -o /tmp/cbc.tgz "${REGISTRY}/@tencent-ai/codebuddy-code/-/codebuddy-code-${VER}.tgz"
-    tar xzf /tmp/cbc.tgz -C /tmp
-    rm -rf "${LIB}"
-    mv /tmp/package "${LIB}"
-    rm -f /tmp/cbc.tgz
-fi
+echo "==> 拉取 @tencent-ai/codebuddy-code 最新版..."
+npm install --prefix "$WORK_DIR/app/lib" --registry "$REGISTRY" @tencent-ai/codebuddy-code@latest
 
-# manifest 版本号跟随实际拉到的 npm 包版本
-ACTUAL=$(grep -m1 '"version"' "${LIB}/package.json" | cut -d'"' -f4)
-if [ -n "${ACTUAL}" ]; then
-    sed -i "s/^version = .*/version = ${ACTUAL}/" manifest
-    echo "manifest 版本号同步为 ${ACTUAL}"
-fi
+ENGINE_VER=$(node -p "require('$WORK_DIR/app/lib/node_modules/@tencent-ai/codebuddy-code/package.json').version")
+echo "==> 引擎版本: $ENGINE_VER"
 
-chmod 755 app/bin/codebuddy cmd/*
-chmod 755 "${LIB}/bin/codebuddy" 2>/dev/null || true
+echo "==> 组装 FPK 树..."
+mkdir -p "$WORK_DIR/cmd" "$WORK_DIR/config" "$WORK_DIR/app/bin" "$WORK_DIR/app/ui/images"
+cp -a "$WORK_DIR/app/lib/node_modules/@tencent-ai/codebuddy-code" "$WORK_DIR/app/lib/codebuddy"
+rm -rf "$WORK_DIR/app/lib/node_modules"
+cp cmd/* "$WORK_DIR/cmd/"
+cp config/* "$WORK_DIR/config/"
+cp app/bin/codebuddy "$WORK_DIR/app/bin/"
+cp app/ui/config "$WORK_DIR/app/ui/"
+cp app/ui/images/* "$WORK_DIR/app/ui/images/"
+cp ICON.PNG ICON_256.PNG "$WORK_DIR/"
+sed "s/^version = .*/version = $ENGINE_VER/" manifest > "$WORK_DIR/manifest"
 
-command -v fnpack >/dev/null 2>&1 || { echo "fnpack 不存在：请在本机（fnOS）运行，或安装 fnpack（https://developer.fnnas.com/）" >&2; exit 1; }
+chmod 755 "$WORK_DIR/cmd/"* "$WORK_DIR/app/bin/codebuddy" "$WORK_DIR/app/lib/codebuddy/bin/codebuddy"
+
+echo "==> fnpack 打包..."
+cd "$WORK_DIR"
 fnpack build --directory .
-echo "产出：$(pwd)/codebuddy.fpk"
+
+FPK_NAME="codebuddy-$ENGINE_VER.fpk"
+cp codebuddy.fpk "$OUT_DIR/$FPK_NAME"
+echo "==> 完成: $OUT_DIR/$FPK_NAME"
