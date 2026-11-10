@@ -1,6 +1,7 @@
 {
     "defaults":
     {
-        "run-as": "package"
+        "run-as": "package",
+        "join-groups": ["render", "video", "docker"]
     }
 }
