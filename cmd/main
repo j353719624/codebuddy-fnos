@@ -27,6 +27,7 @@ WORKSPACE_DIR="${DATA_DIR}/workspace"
 export CODEBUDDY_CONFIG_DIR="${LOG_DIR}/config"
 export HOME="${LOG_DIR}/home"
 export DISABLE_AUTOUPDATER=1
+export CODEBUDDY_GATEWAY_AUTH=none
 mkdir -p "${CODEBUDDY_CONFIG_DIR}" "${HOME}" "${WORKSPACE_DIR}" 2>/dev/null || true
 
 log_msg() { echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_DIR}/info.log"; }
