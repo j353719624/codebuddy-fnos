@@ -1,0 +1,33 @@
+[
+  {
+    "stepTitle": "卸载 CodeBuddy",
+    "items": [
+      {
+        "type": "tips",
+        "field": "tips_uninstall",
+        "label": "说明",
+        "rules": [],
+        "initValue": "",
+        "options": [],
+        "helpText": "卸载会停止 CodeBuddy 服务。默认保留配置和工作区数据，重装后自动恢复。"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_delete_data",
+        "label": "保留或删除应用数据",
+        "rules": [],
+        "initValue": "false",
+        "options": [
+          {
+            "label": "仅卸载应用，保留配置和工作区数据（推荐）",
+            "value": "false"
+          },
+          {
+            "label": "永久删除所有配置和工作区数据（不可恢复）",
+            "value": "true"
+          }
+        ]
+      }
+    ]
+  }
+]

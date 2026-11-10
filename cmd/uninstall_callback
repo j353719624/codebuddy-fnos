@@ -1,8 +1,28 @@
 #!/bin/bash
+# CodeBuddy 卸载回调：按向导选项决定是否清除数据
 set -u
-PKGVAR="${TRIM_PKGVAR:-/vol2/@appdata/workbuddy}"
-pkill -f "codebuddy" 2>/dev/null || true
+
+APPDEST="${TRIM_APPDEST:-}"
+PKGVAR="${TRIM_PKGVAR:-/vol2/@appdata/codebuddy}"
+PKGSHARE="${TRIM_DATA_SHARE_PATHS%%:*}"
+[ -n "${PKGSHARE}" ] || PKGSHARE="/vol2/@appshare/codebuddy"
+
+# 停 daemon
+if [ -x "${APPDEST}/cmd/main" ]; then
+    "${APPDEST}/cmd/main" stop >/dev/null 2>&1 || true
+fi
+pkill -f "CodeBuddy Serve" 2>/dev/null || true
+pkill -f "${APPDEST}/lib/codebuddy" 2>/dev/null || true
+sleep 1
+pkill -9 -f "CodeBuddy Serve" 2>/dev/null || true
+
+# 清 pid 文件
+rm -f "${PKGVAR}/"*.pid "${PKGVAR}/"*.pgid 2>/dev/null || true
+
+# 向导选了"删除全部数据"时才清
 if [ "${wizard_delete_data:-false}" = "true" ]; then
     rm -rf "${PKGVAR}" 2>/dev/null || true
+    rm -rf "${PKGSHARE}" 2>/dev/null || true
 fi
+
 exit 0
